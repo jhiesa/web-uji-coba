@@ -408,7 +408,13 @@ def monitoring():
  
 @app.route("/violations")
 def violations_page():
-    files = sorted(os.listdir("snapshots"), reverse=True)
+    snapshots_dir = "snapshots"
+    if not os.path.exists(snapshots_dir):
+        files = []
+    else:
+        # Saring file biasa dan urutkan berdasarkan waktu modifikasi terbaru di atas
+        files = [f for f in os.listdir(snapshots_dir) if os.path.isfile(os.path.join(snapshots_dir, f))]
+        files.sort(key=lambda x: os.path.getmtime(os.path.join(snapshots_dir, x)), reverse=True)
     return render_template("violations.html", files=files)
  
  
