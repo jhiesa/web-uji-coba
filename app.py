@@ -72,8 +72,12 @@ model_ppe   = YOLO("model/best-ppe.pt")
 # Model Boots → mendeteksi no-boots
 model_boots = YOLO("model/best-boots5.pt")
  
+# Model Person Standar untuk Object Tracking
+model_person = YOLO("model/yolo11n.pt")
+ 
 print("PPE CLASSES   :", model_ppe.names)
 print("BOOTS CLASSES :", model_boots.names)
+print("PERSON CLASSES:", model_person.names)
  
 # =========================================================
 # FOLDER SETUP
@@ -94,6 +98,16 @@ CHAT_ID   = "835216707"
 SNAPSHOT_COOLDOWN = 5          # detik antar snapshot per jenis pelanggaran
 snapshot_cache    = {}         # {violation_key: last_timestamp}
 snapshot_lock     = threading.Lock()
+ 
+# =========================================================
+# STATE TRACKING FOR PERSON ID ALERTS
+# =========================================================
+# Format: {person_id: set(violation_types_notified)}
+# violation_type: 'NO_HELMET', 'NO_VEST', 'NO_BOOTS'
+tracked_alerts = {}
+person_last_seen = {}
+tracking_lock = threading.Lock()
+TRACKING_TIMEOUT = 3.0  # detik toleransi sebelum ID dianggap keluar area
  
 # =========================================================
 # TELEGRAM ALERT  (async – tidak memblokir pipeline deteksi)
@@ -144,22 +158,12 @@ def send_telegram_alert(image_path, status):
 # =========================================================
 def save_snapshot(frame, violation_key, status_label):
     """
-    Simpan snapshot + catat ke DB + kirim Telegram
-    hanya jika cooldown sudah terlewati.
- 
-    violation_key : string unik per jenis pelanggaran,
-                    dipakai sebagai kunci cache.
-    status_label  : teks pelanggaran yang ditampilkan di Telegram.
+    Simpan snapshot + catat ke DB + kirim Telegram.
+    Cooldown/Throttling dikontrol secara eksternal oleh pemanggil.
     """
-    now = time.time()
-    with snapshot_lock:
-        last = snapshot_cache.get(violation_key, 0)
-        if now - last <= SNAPSHOT_COOLDOWN:
-            return                       # masih dalam cooldown – lewati
-        snapshot_cache[violation_key] = now
- 
     ts       = datetime.datetime.now()
-    filename = ts.strftime(f"snapshots/{violation_key}_%Y%m%d_%H%M%S.jpg")
+    # Menambahkan microsecond (%f) agar nama file unik jika terjadi beberapa deteksi dalam detik yang sama
+    filename = ts.strftime(f"snapshots/{violation_key}_%Y%m%d_%H%M%S_%f.jpg")
  
     # Simpan gambar
     cv2.imwrite(filename, frame)
@@ -241,26 +245,98 @@ _ID_NO_HELMET = _find_class_id(model_ppe.names,   "no-helmet", "no helmet")
 _ID_NO_VEST   = _find_class_id(model_ppe.names,   "no-vest",   "no vest")
 _ID_NO_BOOT   = _find_class_id(model_boots.names, "no boot",   "no-boot", "no_boot")
  
-print(f"Class IDs → no-helmet:{_ID_NO_HELMET} | no-vest:{_ID_NO_VEST} | no-boot:{_ID_NO_BOOT}")
- 
- 
+print(f"Class IDs -> no-helmet:{_ID_NO_HELMET} | no-vest:{_ID_NO_VEST} | no-boot:{_ID_NO_BOOT}")
+
+
+# =========================================================
+# HELPER: Map violation box to tracked person ID (Spatial Association)
+# =========================================================
+def get_best_matching_person(violation_bbox, tracked_persons):
+    """
+    Mencari ID orang yang paling cocok dengan kotak pelanggaran.
+    violation_bbox: (vx1, vy1, vx2, vy2)
+    tracked_persons: {track_id: (px1, py1, px2, py2)}
+    """
+    vx1, vy1, vx2, vy2 = violation_bbox
+    v_area = (vx2 - vx1) * (vy2 - vy1)
+    if v_area <= 0:
+        return None
+        
+    best_id = None
+    best_iov = 0.0
+    
+    for tid, pbox in tracked_persons.items():
+        px1, py1, px2, py2 = pbox
+        # Hitung area irisan (intersection)
+        ix1 = max(vx1, px1)
+        iy1 = max(vy1, py1)
+        ix2 = min(vx2, px2)
+        iy2 = min(vy2, py2)
+        
+        iw = max(0, ix2 - ix1)
+        ih = max(0, iy2 - iy1)
+        intersection_area = iw * ih
+        
+        iov = intersection_area / v_area
+        # Asosiasikan jika setidaknya 40% area pelanggaran masuk di dalam kotak orang
+        if iov > best_iov and iov >= 0.4:
+            best_iov = iov
+            best_id = tid
+            
+    return best_id
+
+
+# =========================================================
+# HELPER: Check if boot detection box is near person feet (Spatial Filtering)
+# =========================================================
+def is_box_near_person_feet(boot_bbox, tracked_persons):
+    """
+    Memeriksa apakah kotak sepatu berada di area kaki dari salah satu orang yang terdeteksi.
+    boot_bbox: (bx1, by1, bx2, by2)
+    tracked_persons: {track_id: (px1, py1, px2, py2)}
+    """
+    bx1, by1, bx2, by2 = boot_bbox
+    b_center_x = (bx1 + bx2) / 2
+    b_center_y = (by1 + by2) / 2
+    
+    # Jika tidak ada orang yang terdeteksi, kita anggap semua deteksi sepatu di luar area manusia adalah false positive
+    if not tracked_persons:
+        return False
+        
+    for tid, pbox in tracked_persons.items():
+        px1, py1, px2, py2 = pbox
+        p_height = py2 - py1
+        
+        # Area kaki didefinisikan sebagai bagian bawah (50% ke bawah) dari tubuh orang
+        feet_top = py1 + 0.5 * p_height
+        # Toleransi 15% di bawah batas kotak orang
+        feet_bottom = py2 + 0.15 * p_height
+        
+        # Toleransi lebar sedikit melebar ke kiri/kanan (15% lebar orang)
+        p_width = px2 - px1
+        feet_left = px1 - 0.15 * p_width
+        feet_right = px2 + 0.15 * p_width
+        
+        # Cek apakah koordinat tengah kotak sepatu berada dalam batas area kaki orang ini
+        if feet_left <= b_center_x <= feet_right and feet_top <= b_center_y <= feet_bottom:
+            return True
+            
+    return False
+
+
 # =========================================================
 # VIDEO STREAM GENERATOR
 # =========================================================
 def generate_frames():
     """
     Generator MJPEG untuk endpoint /video.
- 
-    Optimasi FPS:
-    1. Frame diambil dari _frame_buffer (capture thread terpisah).
-    2. Model dijalankan dengan half=True (FP16) bila GPU tersedia,
-       dan verbose=False untuk menekan overhead logging.
-    3. Resize ke 416 px (bukan 640) untuk inferensi lebih cepat;
-       hasilnya tetap divisualisasikan pada frame asli 720p.
-    4. Warna dikodekan JPEG dengan kualitas 80 untuk memperkecil payload.
+    Optimasi FPS & Integrasi Tracking:
+    1. Lacak 'person' menggunakan model_person (yolo11n.pt) dengan ByteTrack.
+    2. Deteksi pelanggaran kustom menggunakan model_ppe dan model_boots.
+    3. Asosiasikan pelanggaran ke Person ID dan kirim notifikasi unik sekali saja.
     """
-    INFER_SIZE = 416   # ukuran input model – turunkan ke 320 bila FPS masih kurang
- 
+    INFER_SIZE = 640   # Menggunakan 640 untuk akurasi pelacakan person yang optimal
+
     while True:
         # Ambil frame terbaru dari buffer
         with _frame_lock:
@@ -268,110 +344,189 @@ def generate_frames():
                 time.sleep(0.01)
                 continue
             frame = _frame_buffer.copy()
- 
-        ppe_cls_ids   = set()
-        boots_cls_ids = set()
- 
-        # ── PPE INFERENCE (no-helmet & no-vest) ──────────────────────
+
+        now_time = time.time()
+
+        # ── 1. PERSON TRACKING (YOLO11 Standard) ──────────────────────
+        results_person = model_person.track(
+            frame,
+            classes=[0],  # filter hanya person
+            persist=True,
+            tracker="bytetrack.yaml",
+            conf=0.25,    # Diturunkan ke 0.25 agar deteksi orang lebih sensitif
+            iou=0.45,
+            verbose=False,
+            imgsz=INFER_SIZE
+        )[0]
+
+        # Ekstrak data orang yang terlacak: {track_id: [x1, y1, x2, y2]}
+        tracked_persons = {}
+        if results_person.boxes is not None and results_person.boxes.id is not None:
+            track_ids = results_person.boxes.id.int().tolist()
+            bboxes = results_person.boxes.xyxy.int().tolist()
+            for tid, bbox in zip(track_ids, bboxes):
+                tracked_persons[tid] = bbox
+                with tracking_lock:
+                    person_last_seen[tid] = now_time
+
+        # Bersihkan ID orang yang sudah keluar area (timeout)
+        with tracking_lock:
+            expired_ids = [tid for tid, last_seen in person_last_seen.items() if now_time - last_seen > TRACKING_TIMEOUT]
+            for tid in expired_ids:
+                person_last_seen.pop(tid, None)
+                tracked_alerts.pop(tid, None)
+                print(f"🔄 Tracking ID #{tid} di-reset karena tidak terdeteksi selama {TRACKING_TIMEOUT} detik.")
+
+        # ── 2. VIOLATIONS DETECTION (Custom Models) ───────────────────
         results_ppe = model_ppe.predict(
             frame,
-            conf=0.25,           # threshold confidence (Bab III §3.3.3)
-            iou=0.45,            # threshold NMS (Bab III §3.3.3)
+            conf=0.25,
+            iou=0.45,
             imgsz=INFER_SIZE,
-            verbose=False,
-            half=False           # ganti True jika GPU CUDA tersedia
+            verbose=False
         )[0]
- 
-        for box in results_ppe.boxes:
-            cls   = int(box.cls[0])
-            label = model_ppe.names[cls]
-            ppe_cls_ids.add(cls)
- 
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            conf  = float(box.conf[0])
- 
-            # Warna per kelas (Bab IV §4.1.2)
-            if cls == _ID_NO_HELMET:
-                color = (0, 0, 255)    # merah  → no-helmet
-            elif cls == _ID_NO_VEST:
-                color = (0, 165, 255)  # oranye → no-vest
-            else:
-                color = (0, 255, 0)    # hijau  → helmet/vest detected
- 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(
-                frame,
-                f"{label.upper()} {conf:.2f}",
-                (x1, max(y1 - 8, 10)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2
-            )
- 
-        # ── BOOTS INFERENCE (no-boots) ────────────────────────────────
+
         results_boots = model_boots.predict(
             frame,
             conf=0.25,
             iou=0.45,
             imgsz=INFER_SIZE,
-            verbose=False,
-            half=False
+            verbose=False
         )[0]
- 
+
+        # Kumpulkan seluruh pelanggaran frame ini: (tipe, conf, [vx1, vy1, vx2, vy2])
+        frame_violations = []
+
+        # Deteksi PPE (no-helmet & no-vest)
+        for box in results_ppe.boxes:
+            cls = int(box.cls[0])
+            conf = float(box.conf[0])
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            bbox = [x1, y1, x2, y2]
+            if cls == _ID_NO_HELMET:
+                frame_violations.append(("NO_HELMET", conf, bbox))
+            elif cls == _ID_NO_VEST:
+                frame_violations.append(("NO_VEST", conf, bbox))
+
+        # Deteksi sepatu (no-boots & boots patuh)
         for box in results_boots.boxes:
             cls       = int(box.cls[0])
             label_raw = model_boots.names[cls]
             label_norm = label_raw.strip().lower().replace("_", " ").replace("-", " ")
-
             x1, y1, x2, y2 = map(int, box.xyxy[0])
+            bbox = [x1, y1, x2, y2]
             conf = float(box.conf[0])
-
+            
+            # Filter: Lewati jika deteksi sepatu tidak berada di dekat kaki orang mana pun
+            if not is_box_near_person_feet(bbox, tracked_persons):
+                continue
+                
             if "no boot" in label_norm:
-                boots_cls_ids.add(cls)
-                color = (255, 0, 255)   # ungu → no-boots
-                text = f"NO-BOOTS {conf:.2f}"
+                frame_violations.append(("NO_BOOTS", conf, bbox))
             else:
-                color = (0, 255, 0)     # hijau → boots (lengkap)
-                text = f"BOOTS {conf:.2f}"
+                # Gambarkan sepatu patuh (BOOTS hijau) langsung di frame
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(
+                    frame,
+                    f"BOOTS {conf:.2f}",
+                    (x1, max(y1 - 8, 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2
+                )
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        # ── 3. ASOSIASI SPASIAL & PEMICU ALARM ────────────────────────
+        # Format: (tipe, conf, bbox, person_id)
+        drawn_violations = []
+        alert_texts = []
+        violations_to_save = set()
+
+        for vtype, vconf, vbbox in frame_violations:
+            person_id = get_best_matching_person(vbbox, tracked_persons)
+            drawn_violations.append((vtype, vconf, vbbox, person_id))
+
+            if person_id is not None:
+                # Cek apakah ID orang ini sudah dikirimi notifikasi untuk jenis pelanggaran ini
+                should_alert = False
+                with tracking_lock:
+                    if person_id not in tracked_alerts:
+                        tracked_alerts[person_id] = set()
+                    if vtype not in tracked_alerts[person_id]:
+                        tracked_alerts[person_id].add(vtype)
+                        should_alert = True
+                
+                if should_alert:
+                    alert_texts.append(f"Orang #{person_id}: {vtype}")
+                    violations_to_save.add(vtype)
+            else:
+                # Cadangan: Jika deteksi orang gagal, gunakan cooldown global (cooldown per pelanggaran)
+                violation_key = f"global_{vtype}"
+                should_alert = False
+                with snapshot_lock:
+                    last = snapshot_cache.get(violation_key, 0)
+                    if now_time - last > SNAPSHOT_COOLDOWN:
+                        snapshot_cache[violation_key] = now_time
+                        should_alert = True
+                if should_alert:
+                    alert_texts.append(f"Pelanggaran: {vtype}")
+                    violations_to_save.add(vtype)
+
+        # ── 4. GAMBAR BOUNDING BOXES ──────────────────────────────────
+        # Gambar kotak hijau untuk Person yang terdeteksi & dilacak
+        for tid, pbox in tracked_persons.items():
+            px1, py1, px2, py2 = pbox
+            cv2.rectangle(frame, (px1, py1), (px2, py2), (0, 255, 0), 2)
             cv2.putText(
                 frame,
-                text,
-                (x1, max(y1 - 8, 10)),
+                f"PERSON #{tid}",
+                (px1, max(py1 - 8, 10)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2
+            )
+
+        # Gambar kotak pelanggaran
+        for vtype, vconf, vbbox, person_id in drawn_violations:
+            vx1, vy1, vx2, vy2 = vbbox
+
+            # Warna per kelas
+            if vtype == "NO_HELMET":
+                color = (0, 0, 255)    # merah  → no-helmet
+                label_text = f"NO-HELMET {vconf:.2f}"
+            elif vtype == "NO_VEST":
+                color = (0, 165, 255)  # oranye → no-vest
+                label_text = f"NO-VEST {vconf:.2f}"
+            elif vtype == "NO_BOOTS":
+                color = (255, 0, 255)  # ungu → no-boots
+                label_text = f"NO-BOOTS {vconf:.2f}"
+            else:
+                continue
+
+            # Tambahkan info ID orang jika ada asosiasinya
+            if person_id is not None:
+                label_text += f" (ID:#{person_id})"
+
+            cv2.rectangle(frame, (vx1, vy1), (vx2, vy2), color, 2)
+            cv2.putText(
+                frame,
+                label_text,
+                (vx1, max(vy1 - 8, 10)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2
             )
- 
-        # ── LOGIKA PELANGGARAN (Bab III §3.4.3) ──────────────────────
-        violations = []
- 
-        if _ID_NO_HELMET is not None and _ID_NO_HELMET in ppe_cls_ids:
-            violations.append("NO_HELMET")
- 
-        if _ID_NO_VEST is not None and _ID_NO_VEST in ppe_cls_ids:
-            violations.append("NO_VEST")
- 
-        if _ID_NO_BOOT is not None and _ID_NO_BOOT in boots_cls_ids:
-            violations.append("NO_BOOTS")
- 
-        # ── STATUS & SNAPSHOT ─────────────────────────────────────────
-        if violations:
-            status_text  = " | ".join(violations)
+
+        # ── 5. STATUS TEKS OVERLAY ────────────────────────────────────
+        active_violations = sorted(list(set(vtype for vtype, _, _, _ in drawn_violations)))
+        if active_violations:
+            status_text  = " | ".join(active_violations)
             status_color = (0, 0, 255)
- 
-            violation_key = "_".join(sorted(violations))
-            save_snapshot(frame.copy(), violation_key, status_text)
         else:
             status_text  = "APD LENGKAP"
             status_color = (0, 200, 0)
- 
-        # ── OVERLAY TEKS ──────────────────────────────────────────────
-        # Status APD
+
+        # Status APD di kiri atas
         cv2.putText(
             frame, status_text,
             (20, 45),
             cv2.FONT_HERSHEY_SIMPLEX, 1.0, status_color, 3
         )
- 
-        # Timestamp real-time
+
+        # Timestamp real-time di kanan bawah
         ts_str = datetime.datetime.now().strftime("%A, %d-%m-%Y  %H:%M:%S")
         cv2.putText(
             frame, ts_str,
@@ -379,6 +534,13 @@ def generate_frames():
             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2
         )
  
+        # ── 6. SNAPSHOT & TELEGRAM TRIGGER (Setelah Gambar Terlukis) ──
+        if alert_texts:
+            status_text_alert = " | ".join(alert_texts)
+            violation_key = "_".join(sorted(list(violations_to_save)))
+            # Mengambil salinan frame yang sudah digambari bounding box & teks overlay
+            save_snapshot(frame.copy(), violation_key, status_text_alert)
+
         # ── ENCODE & YIELD ────────────────────────────────────────────
         ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ret:
