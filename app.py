@@ -320,19 +320,22 @@ def generate_frames():
             cls       = int(box.cls[0])
             label_raw = model_boots.names[cls]
             label_norm = label_raw.strip().lower().replace("_", " ").replace("-", " ")
- 
-            if "no boot" not in label_norm:
-                continue   # lewati kelas 'boots' (APD lengkap)
- 
-            boots_cls_ids.add(cls)
+
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             conf = float(box.conf[0])
- 
-            color = (255, 0, 255)   # ungu → no-boots
+
+            if "no boot" in label_norm:
+                boots_cls_ids.add(cls)
+                color = (255, 0, 255)   # ungu → no-boots
+                text = f"NO-BOOTS {conf:.2f}"
+            else:
+                color = (0, 255, 0)     # hijau → boots (lengkap)
+                text = f"BOOTS {conf:.2f}"
+
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
                 frame,
-                f"NO-BOOTS {conf:.2f}",
+                text,
                 (x1, max(y1 - 8, 10)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2
             )
