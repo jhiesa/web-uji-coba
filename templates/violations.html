@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Violations</title>
+
+    <link rel="stylesheet"
+    href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="sidebar">
+
+    <div class="logo">
+        PPE-CAM
+    </div>
+
+    <div class="menu">
+
+        <a href="/" class="menu-link">
+    <div class="menu-item">
+        Dashboard
+    </div>
+    </a>
+
+    <a href="/monitoring" class="menu-link">
+        <div class="menu-item">
+            Monitoring
+        </div>
+    </a>
+
+    <a href="/violations" class="menu-link">
+        <div class="menu-item active">
+            Violations
+        </div>
+    </a>
+
+    <a href="/reports" class="menu-link">
+        <div class="menu-item">
+            Reports
+        </div>
+    </a>
+
+    </div>
+
+</div>
+
+<div class="main">
+
+    <div class="topbar">
+        <h1>Violation Snapshots</h1>
+    </div>
+
+    <div class="gallery">
+
+        {% for file in files %}
+
+        <div class="snapshot-card">
+
+            <img src="{{ url_for('static',
+            filename='../snapshots/' + file) }}">
+
+            <p>{{ file }}</p>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+</div>
+
+</body>
+</html>

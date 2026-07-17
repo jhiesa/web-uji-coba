@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+    <title>PPE Reports</title>
+
+    <link rel="stylesheet"
+    href="{{ url_for('static', filename='style.css') }}">
+
+    <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+</head>
+
+<body>
+
+<!-- ===================================================== -->
+<!-- SIDEBAR -->
+<!-- ===================================================== -->
+<div class="sidebar">
+
+    <div class="logo">
+
+        <i class="fa-solid fa-shield-halved"></i>
+
+        <span>PPE-CAM</span>
+
+    </div>
+
+    <div class="menu">
+
+        <a href="/" class="menu-link">
+
+            <div class="menu-item">
+
+                <i class="fa-solid fa-chart-line"></i>
+
+                Dashboard
+
+            </div>
+
+        </a>
+
+        <a href="/monitoring" class="menu-link">
+
+            <div class="menu-item">
+
+                <i class="fa-solid fa-video"></i>
+
+                Monitoring
+
+            </div>
+
+        </a>
+
+        <a href="/violations" class="menu-link">
+
+            <div class="menu-item">
+
+                <i class="fa-solid fa-triangle-exclamation"></i>
+
+                Violations
+
+            </div>
+
+        </a>
+
+        <a href="/reports" class="menu-link">
+
+            <div class="menu-item active">
+
+                <i class="fa-solid fa-file-pdf"></i>
+
+                Reports
+
+            </div>
+
+        </a>
+
+    </div>
+
+</div>
+
+<!-- ===================================================== -->
+<!-- MAIN -->
+<!-- ===================================================== -->
+<div class="main">
+
+    <!-- ================================================= -->
+    <!-- TOPBAR -->
+    <!-- ================================================= -->
+    <div class="topbar">
+
+        <div>
+
+            <h1>Reports</h1>
+
+            <p class="subtitle">
+                Smart Construction Safety Monitoring
+            </p>
+
+        </div>
+
+        <div class="topbar-right">
+
+            <a id="download-pdf-btn"
+            class="download-btn"
+            target="_blank"
+            download="laporan.pdf">
+
+                <i class="fa-solid fa-download"></i>
+
+                Download PDF
+
+            </a>
+
+        </div>
+
+        <script>
+            function updatePdfLink() {
+                const params = new URLSearchParams(window.location.search);
+                let link = '/report?';
+                if (params.has('filter')) link += 'filter=' + params.get('filter') + '&';
+                if (params.has('start')) link += 'start=' + params.get('start') + '&';
+                if (params.has('end')) link += 'end=' + params.get('end') + '&';
+                document.getElementById('download-pdf-btn').href = link.replace(/&$/, '');
+            }
+            updatePdfLink();
+        </script>
+
+    </div>
+
+    <!-- ================================================= -->
+    <!-- FILTER PANEL -->
+    <!-- ================================================= -->
+    <div class="panel-box">
+
+        <div class="panel-header">
+
+            <h2>
+
+                <i class="fa-solid fa-filter"></i>
+
+                Filter Reports
+
+            </h2>
+
+        </div>
+
+        <div class="filter-container">
+
+            <!-- QUICK FILTER -->
+            <div class="quick-filter">
+
+                <a href="/reports?filter=today"
+                class="filter-btn">
+
+                    Hari Ini
+
+                </a>
+
+                <a href="/reports?filter=week"
+                class="filter-btn">
+
+                    Minggu Ini
+
+                </a>
+
+                <a href="/reports"
+                class="filter-btn">
+
+                    Semua Data
+
+                </a>
+
+            </div>
+
+            <!-- CUSTOM FILTER -->
+            <form method="GET"
+            action="/reports"
+            class="date-filter-form">
+
+                <div class="date-group">
+
+                    <label>Start Date</label>
+
+                    <input type="date"
+                    name="start"
+                    required>
+
+                </div>
+
+                <div class="date-group">
+
+                    <label>End Date</label>
+
+                    <input type="date"
+                    name="end"
+                    required>
+
+                </div>
+
+                <button type="submit"
+                class="download-btn">
+
+                    <i class="fa-solid fa-magnifying-glass"></i>
+
+                    Filter
+
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+    <!-- ================================================= -->
+    <!-- REPORT TABLE -->
+    <!-- ================================================= -->
+    <div class="panel-box">
+
+        <div class="panel-header">
+
+            <h2>
+
+                <i class="fa-solid fa-table"></i>
+
+                Violation Reports
+
+            </h2>
+
+            <span class="badge">
+
+                Max 50 data / halaman
+
+            </span>
+
+        </div>
+
+        <div class="table-container">
+
+            <table class="report-table">
+
+                <thead>
+
+                    <tr>
+
+                        <th>ID</th>
+
+                        <th>Tanggal</th>
+
+                        <th>Waktu</th>
+
+                        <th>Pelanggaran</th>
+
+                        <th>Dokumentasi</th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+                    {% if data|length == 0 %}
+
+                    <tr>
+
+                        <td colspan="5">
+
+                            <div class="empty-data">
+
+                                <i class="fa-solid fa-circle-info"></i>
+
+                                Tidak ada data pelanggaran
+
+                            </div>
+
+                        </td>
+
+                    </tr>
+
+                    {% endif %}
+
+                    {% for row in data %}
+
+                    <tr>
+
+                        <td>
+
+                            #{{ row[0] }}
+
+                        </td>
+
+                        <td>
+
+                            {{ row[1] }}
+
+                        </td>
+
+                        <td>
+
+                            {{ row[2] }}
+
+                        </td>
+
+                        <td>
+
+                            <span class="violation-tag">
+
+                                {{ row[3] }}
+
+                            </span>
+
+                        </td>
+
+                        <td>
+
+                            <img
+                            src="/{{ row[4] }}"
+                            class="report-image">
+
+                        </td>
+
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+        <!-- ============================================= -->
+        <!-- PAGINATION -->
+        <!-- ============================================= -->
+        <div class="pagination">
+
+            {% if page > 1 %}
+
+            <a href="/reports?page={{ page-1 }}"
+            class="pagination-btn">
+
+                <i class="fa-solid fa-chevron-left"></i>
+
+                Prev
+
+            </a>
+
+            {% endif %}
+
+            <div class="page-number">
+
+                Page {{ page }}
+
+            </div>
+
+            <a href="/reports?page={{ page+1 }}"
+            class="pagination-btn">
+
+                Next
+
+                <i class="fa-solid fa-chevron-right"></i>
+
+            </a>
+
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+
+</html>

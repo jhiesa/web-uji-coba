@@ -1,0 +1,489 @@
+<!-- templates/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+    <title>
+        Smart Construction Monitoring
+    </title>
+
+    <!-- CSS -->
+    <link rel="stylesheet"
+    href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- CHART -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+
+<body>
+
+<!-- ========================================================= -->
+<!-- SIDEBAR -->
+<!-- ========================================================= -->
+<div class="sidebar">
+
+    <div class="logo">
+        PPE-CAM
+    </div>
+
+    <div class="menu">
+
+        <a href="/" class="menu-link">
+
+            <div class="menu-item active">
+                Dashboard
+            </div>
+
+        </a>
+
+        <a href="/monitoring" class="menu-link">
+
+            <div class="menu-item">
+                Monitoring
+            </div>
+
+        </a>
+
+        <a href="/violations" class="menu-link">
+
+            <div class="menu-item">
+                Violations
+            </div>
+
+        </a>
+
+        <a href="/reports" class="menu-link">
+
+            <div class="menu-item">
+                Reports
+            </div>
+
+        </a>
+
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- MAIN -->
+<!-- ========================================================= -->
+<div class="main">
+
+    <!-- ========================================================= -->
+    <!-- TOPBAR -->
+    <!-- ========================================================= -->
+    <div class="topbar">
+
+        <div>
+
+            <h1>
+                Smart Construction Monitoring
+            </h1>
+
+            <p>
+                AI-Based PPE Detection System
+            </p>
+
+        </div>
+
+        <div class="system-status">
+
+            <div class="status-dot"></div>
+
+            <span>
+                AI ACTIVE
+            </span>
+
+        </div>
+
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- STATS CARDS -->
+    <!-- ========================================================= -->
+    <div class="cards">
+
+        <!-- TOTAL TODAY -->
+        <div class="card">
+
+            <h2>
+                Total Violations Today
+            </h2>
+
+            <p id="total_today">
+                0
+            </p>
+
+        </div>
+
+        <!-- HELMET -->
+        <div class="card">
+
+            <h2>
+                No Helmet
+            </h2>
+
+            <p id="total_helmet">
+                0
+            </p>
+
+        </div>
+
+        <!-- VEST -->
+        <div class="card">
+
+            <h2>
+                No Vest
+            </h2>
+
+            <p id="total_vest">
+                0
+            </p>
+
+        </div>
+
+        <!-- BOOTS -->
+        <div class="card">
+
+            <h2>
+                No Boots
+            </h2>
+
+            <p id="total_boots">
+                0
+            </p>
+
+        </div>
+
+        <!-- SNAPSHOT -->
+        <div class="card">
+
+            <h2>
+                Total Snapshot
+            </h2>
+
+            <p id="total_snapshots">
+                0
+            </p>
+
+        </div>
+
+        <!-- UPTIME -->
+        <div class="card">
+
+            <h2>
+                System Uptime
+            </h2>
+
+            <p id="uptime">
+                00:00:00
+            </p>
+
+        </div>
+
+        <!-- STATUS -->
+        <div class="card">
+
+            <h2>
+                System Status
+            </h2>
+
+            <p class="online">
+                ONLINE
+            </p>
+
+        </div>
+
+        <!-- CLOCK -->
+        <div class="card">
+
+            <h2>
+                Realtime Clock
+            </h2>
+
+            <p id="clock">
+                --
+            </p>
+
+        </div>
+
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- CONTENT -->
+    <!-- ========================================================= -->
+    <div class="content">
+
+        <!-- ========================================================= -->
+        <!-- LIVE CCTV -->
+        <!-- ========================================================= -->
+        <div class="video-box">
+
+            <div class="section-title">
+
+                PPE-CAM MONITORING
+
+            </div>
+
+            <img
+                src="{{ url_for('video') }}"
+                class="live-video"
+            >
+
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- RIGHT PANEL -->
+        <!-- ========================================================= -->
+        <div class="right-panel">
+
+            <!-- ========================================================= -->
+            <!-- REPORT -->
+            <!-- ========================================================= -->
+            <div class="panel-box">
+
+                <div class="section-title">
+                    REPORT MANAGEMENT
+                </div>
+
+                <a href="/reports"
+                class="download-btn">
+
+                    Download PDF Report
+
+                </a>
+
+            </div>
+
+            <!-- ========================================================= -->
+            <!-- VIOLATION CHART -->
+            <!-- ========================================================= -->
+            <div class="panel-box">
+
+                <div class="section-title">
+
+                    VIOLATION STATISTICS
+
+                </div>
+
+                <canvas id="violationChart"></canvas>
+
+            </div>
+
+            <!-- ========================================================= -->
+            <!-- QUICK INFO -->
+            <!-- ========================================================= -->
+            <div class="panel-box">
+
+                <div class="section-title">
+
+                    SYSTEM INFORMATION
+
+                </div>
+
+                <div class="info-item">
+
+                    <span>
+                        AI Model
+                    </span>
+
+                    <strong>
+                        YOLOv11
+                    </strong>
+
+                </div>
+
+                <div class="info-item">
+
+                    <span>
+                        Camera
+                    </span>
+
+                    <strong>
+                        Webcam
+                    </strong>
+
+                </div>
+
+                <div class="info-item">
+
+                    <span>
+                        Detection
+                    </span>
+
+                    <strong>
+                        Helmet / Vest / Boots
+                    </strong>
+
+                </div>
+
+                <div class="info-item">
+
+                    <span>
+                        Telegram Alert
+                    </span>
+
+                    <strong>
+                        ACTIVE
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- JAVASCRIPT -->
+<!-- ========================================================= -->
+<script>
+
+let violationChart;
+
+// =========================================================
+// LOAD STATS
+// =========================================================
+async function loadStats(){
+
+    const response = await fetch("/stats");
+
+    const data = await response.json();
+
+    // =====================================================
+    // UPDATE TEXT
+    // =====================================================
+    document.getElementById("total_today").innerText =
+        data.total_today;
+
+    document.getElementById("total_helmet").innerText =
+        data.total_helmet;
+
+    document.getElementById("total_vest").innerText =
+        data.total_vest;
+
+    document.getElementById("total_boots").innerText =
+        data.total_boots;
+
+    document.getElementById("total_snapshots").innerText =
+        data.total_snapshots;
+
+    document.getElementById("uptime").innerText =
+        data.uptime;
+
+    document.getElementById("clock").innerText =
+        data.clock;
+
+    // =====================================================
+    // UPDATE CHART
+    // =====================================================
+    if(violationChart){
+
+        violationChart.data.datasets[0].data = [
+
+            data.total_helmet,
+            data.total_vest,
+            data.total_boots
+
+        ];
+
+        violationChart.update();
+    }
+}
+
+// =========================================================
+// CHART
+// =========================================================
+const ctx = document.getElementById(
+    'violationChart'
+);
+
+violationChart = new Chart(ctx, {
+
+    type: 'bar',
+
+    data: {
+
+        labels: [
+
+            'NO HELMET',
+            'NO VEST',
+            'NO BOOTS'
+
+        ],
+
+        datasets: [{
+
+            label: 'Violation Count',
+
+            data: [0,0,0],
+
+            borderWidth: 1
+
+        }]
+    },
+
+    options: {
+
+        responsive: true,
+
+        plugins: {
+
+            legend: {
+
+                labels: {
+
+                    color: 'white'
+
+                }
+            }
+        },
+
+        scales: {
+
+            y: {
+
+                beginAtZero: true,
+
+                ticks: {
+
+                    color: 'white'
+
+                }
+            },
+
+            x: {
+
+                ticks: {
+
+                    color: 'white'
+
+                }
+            }
+        }
+    }
+});
+
+// =========================================================
+// AUTO REFRESH
+// =========================================================
+setInterval(loadStats, 1000);
+
+// FIRST LOAD
+loadStats();
+
+</script>
+
+</body>
+</html>
