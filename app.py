@@ -129,7 +129,7 @@ def _telegram_worker():
                 f"📅 Tanggal : {now.strftime('%d/%m/%Y')}\n"
                 f"⏰ Waktu   : {now.strftime('%H:%M:%S')}\n\n"
                 f"⚠ Pelanggaran:\n{status}\n\n"
-                "📍 Smart Construction Monitoring"
+                "📍 CAM 1 - LOKASI PROYEK A"
             )
             with open(image_path, "rb") as photo:
                 requests.post(
@@ -470,15 +470,15 @@ def generate_frames():
                     violations_to_save.add(vtype)
 
         # ── 4. GAMBAR BOUNDING BOXES ──────────────────────────────────
-        # Gambar kotak hijau untuk Person yang terdeteksi & dilacak
+        # Gambar kotak ungu untuk Person yang terdeteksi & dilacak
         for tid, pbox in tracked_persons.items():
             px1, py1, px2, py2 = pbox
-            cv2.rectangle(frame, (px1, py1), (px2, py2), (0, 255, 0), 2)
+            cv2.rectangle(frame, (px1, py1), (px2, py2), (255, 0, 255), 2)
             cv2.putText(
                 frame,
                 f"PERSON #{tid}",
                 (px1, max(py1 - 8, 10)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 0, 255), 2
             )
 
         # Gambar kotak pelanggaran
