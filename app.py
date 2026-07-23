@@ -90,6 +90,8 @@ os.makedirs("logs",      exist_ok=True)
 # =========================================================
 BOT_TOKEN = "8794935914:AAF_Xy8jHZnDCbxAOZyGeo5jz-AozOW3gtY"
 CHAT_ID   = "835216707"
+# Lokasi kamera / label yang akan muncul di caption Telegram. Bisa di-set lewat env var.
+CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "CAM 1 - LOKASI PROYEK UTAMA")
  
 # =========================================================
 # SNAPSHOT / NOTIFIKASI COOLDOWN
@@ -107,7 +109,7 @@ snapshot_lock     = threading.Lock()
 tracked_alerts = {}
 person_last_seen = {}
 tracking_lock = threading.Lock()
-TRACKING_TIMEOUT = 3.0  # detik toleransi sebelum ID dianggap keluar area
+TRACKING_TIMEOUT = 5.0  # detik toleransi sebelum ID dianggap keluar area
  
 # =========================================================
 # TELEGRAM ALERT  (async – tidak memblokir pipeline deteksi)
@@ -129,7 +131,7 @@ def _telegram_worker():
                 f"📅 Tanggal : {now.strftime('%d/%m/%Y')}\n"
                 f"⏰ Waktu   : {now.strftime('%H:%M:%S')}\n\n"
                 f"⚠ Pelanggaran:\n{status}\n\n"
-                "📍 CAM 1 - LOKASI PROYEK A"
+                f"📍 {CAMERA_LOCATION}"
             )
             with open(image_path, "rb") as photo:
                 requests.post(
@@ -388,7 +390,7 @@ def generate_frames():
 
         results_boots = model_boots.predict(
             frame,
-            conf=0.25,
+            conf=0.65,
             iou=0.45,
             imgsz=INFER_SIZE,
             verbose=False
@@ -428,7 +430,7 @@ def generate_frames():
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(
                     frame,
-                    f"BOOTS {conf:.2f}",
+                    f"NO_BOOTS {conf:.2f}",
                     (x1, max(y1 - 8, 10)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2
                 )
@@ -492,8 +494,8 @@ def generate_frames():
             elif vtype == "NO_VEST":
                 color = (0, 165, 255)  # oranye → no-vest
                 label_text = f"NO-VEST {vconf:.2f}"
-            elif vtype == "NO_BOOTS":
-                color = (255, 0, 255)  # ungu → no-boots
+            elif vtype == "BOOTS":
+                color = (0, 255, 0)  # ungu → no-boots
                 label_text = f"NO-BOOTS {vconf:.2f}"
             else:
                 continue
@@ -511,20 +513,20 @@ def generate_frames():
             )
 
         # ── 5. STATUS TEKS OVERLAY ────────────────────────────────────
-        active_violations = sorted(list(set(vtype for vtype, _, _, _ in drawn_violations)))
-        if active_violations:
-            status_text  = " | ".join(active_violations)
-            status_color = (0, 0, 255)
-        else:
-            status_text  = "APD LENGKAP"
-            status_color = (0, 200, 0)
+        # active_violations = sorted(list(set(vtype for vtype, _, _, _ in drawn_violations)))
+        # if active_violations:
+        #     status_text  = " | ".join(active_violations)
+        #     status_color = (0, 0, 255)
+        # else:
+        #     status_text  = "APD LENGKAP"
+        #     status_color = (0, 200, 0)
 
         # Status APD di kiri atas
-        cv2.putText(
-            frame, status_text,
-            (20, 45),
-            cv2.FONT_HERSHEY_SIMPLEX, 1.0, status_color, 3
-        )
+        # cv2.putText(
+        #     frame, status_text,
+        #     (20, 45),
+        #     cv2.FONT_HERSHEY_SIMPLEX, 1.0, status_color, 3
+        # )
 
         # Timestamp real-time di kanan bawah
         ts_str = datetime.datetime.now().strftime("%A, %d-%m-%Y  %H:%M:%S")
